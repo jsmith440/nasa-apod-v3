@@ -1,9 +1,9 @@
 package edu.cnm.deepdive.nasaapod.model.repository;
 
 import android.app.Application;
-import android.media.audiofx.EnvironmentalReverb;
 import android.os.Environment;
 import androidx.annotation.NonNull;
+import androidx.core.app.JobIntentService;
 import androidx.lifecycle.LiveData;
 import edu.cnm.deepdive.nasaapod.BuildConfig;
 import edu.cnm.deepdive.nasaapod.model.dao.AccessDao;
@@ -14,24 +14,29 @@ import edu.cnm.deepdive.nasaapod.model.entity.Apod.MediaType;
 import edu.cnm.deepdive.nasaapod.model.pojo.ApodWithStats;
 import edu.cnm.deepdive.nasaapod.service.ApodDatabase;
 import edu.cnm.deepdive.nasaapod.service.ApodService;
+import io.reactivex.Maybe;
 import io.reactivex.Single;
 import io.reactivex.SingleSource;
 import io.reactivex.schedulers.Schedulers;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import okhttp3.ResponseBody;
 
 public class ApodRepository {
 
   private static final int NETWORK_THREAD_COUNT = 10;
   private static final Pattern URL_FILENAME_PATTERN =
       Pattern.compile("^.*/([^/#?]+)(?:\\?.*)?(?:#.*)?$");
-  private static final String LOCAL_FILENAME_FORMAT = "%1$tY%$tm%1$td-%2$s";
-
+  private static final String LOCAL_FILENAME_FORMAT = "%1$tY%1$tm%1$td-%2$s";
 
   private final ApodDatabase database;
   private final ApodService nasa;
@@ -58,11 +63,11 @@ public class ApodRepository {
 
   public Single<Apod> get(Date date) {
     ApodDao dao = database.getApodDao();
-    return dao.select(date) // Task not executed yet
-        .subscribeOn(Schedulers.io()) // Run task background
-        .switchIfEmpty((SingleSource<? extends Apod>) (observer) -> // replace empty with a result provide result from below
+    return dao.select(date)
+        .subscribeOn(Schedulers.io())
+        .switchIfEmpty((SingleSource<? extends Apod>) (observer) ->
             nasa.get(BuildConfig.API_KEY, ApodService.DATE_FORMATTER.format(date))
-                .subscribeOn(Schedulers.from(networkPool)) // when connected to network - Pool of fixed threads
+                .subscribeOn(Schedulers.from(networkPool))
                 .flatMap((apod) ->
                     dao.insert(apod)
                         .map((id) -> {
@@ -70,9 +75,9 @@ public class ApodRepository {
                           return apod;
                         })
                 )
-                .subscribe(observer) // Executes
+                .subscribe(observer)
         )
-                .doAfterSuccess(this::insertAccess); // Invoking access object
+        .doAfterSuccess(this::insertAccess);
   }
 
   public LiveData<List<ApodWithStats>> get() {
@@ -83,15 +88,46 @@ public class ApodRepository {
     // TODO Add local file download & reference.
     boolean canBeLocal = (apod.getMediaType() == MediaType.IMAGE);
     File file = canBeLocal ? getFile(apod) : null;
-    return Single.fromCallable(apod::getUrl);
+    return Maybe.fromCallable(() ->
+        canBeLocal ? (file.exists() ? file.toURI().toString() : null) : apod.getUrl())
+        .switchIfEmpty((SingleSource<String>) (observer) ->
+            nasa.getFile(apod.getUrl())
+                .map((body) -> {
+                  try {
+                    return download(body, file);
+                  } catch (IOException ex) {
+                    return apod.getUrl();
+                  }
+                })
+                .subscribeOn(Schedulers.from(networkPool))
+                .subscribe(observer)
+        );
   }
 
-  private File getFile(@NonNull Apod apod {
+  private String download(ResponseBody body, File file) throws IOException {
+    try (
+        InputStream input = body.byteStream();
+        OutputStream output = new FileOutputStream(file);
+    ) {
+      byte[] buffer = new byte[16_384];
+      int bytesRead = 0;
+      while (bytesRead >= 0) {
+        bytesRead = input.read(buffer);
+        if (bytesRead > 0) {
+          output.write(buffer, 0, bytesRead);
+        }
+      }
+      output.flush();
+      return file.toURI().toString();
+    }
+  }
+
+  private File getFile(@NonNull Apod apod) {
     String url = apod.getUrl();
     File file = null;
     Matcher matcher = URL_FILENAME_PATTERN.matcher(url);
     if (matcher.matches()) {
-      String filename = String.format(LOCAL_FILENAME_FORMAT, apod.getDate(), matcher.group());
+      String filename = String.format(LOCAL_FILENAME_FORMAT, apod.getDate(), matcher.group(1));
       File directory = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES);
       if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState(directory))) {
         directory = context.getFilesDir();

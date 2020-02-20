@@ -57,13 +57,22 @@ public class MainViewModel extends AndroidViewModel implements LifecycleObserver
   }
 
   public void setApodDate(Date date) {
+    // Repository Module
     throwable.setValue(null);
     pending.add(
         repository.get(date)
-            .doOnSuccess(apod::postValue)
-            .doOnError(throwable::postValue)
-            .subscribe()
+            .doOnSuccess(apod::postValue) // Succeed: put pic value
+            .doOnError(throwable::postValue) // Failure:
+            .subscribe() // Execute task
     );
+  }
+
+  public void getImage(@NonNull Apod apod, @NonNull Consumer<String> pathConsumer) {
+    throwable.setValue(null);
+    repository.getImage(apod)
+        .doOnSuccess(pathConsumer)
+        .doOnError(throwable::postValue)
+        .subscribe();
   }
 
   @SuppressWarnings("unused")

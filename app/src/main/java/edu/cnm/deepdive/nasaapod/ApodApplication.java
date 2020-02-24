@@ -22,6 +22,7 @@ public class ApodApplication extends Application {
     );
     GoogleSignInRepository.setContext(this);
     ApodRepository.setContext(this);
+    ApodDatabase.setContext(this);
     ApodDatabase.getInstance().getApodDao().delete()
         .subscribeOn(Schedulers.io())
         .subscribe();

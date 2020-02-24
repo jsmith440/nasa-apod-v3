@@ -68,8 +68,9 @@ public class MainActivity extends AppCompatActivity {
       default:
         handled = super.onOptionsItemSelected(item);
     }
-        return super.onOptionsItemSelected(item);
+    return handled;
   }
+
   public void loadApod(Date date) {
     setProgressVisibility(View.VISIBLE);
     viewModel.setApodDate(date);
@@ -112,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
     NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
     navigator = findViewById(R.id.navigator);
     navigator.setOnNavigationItemSelectedListener((item) -> {
-    navigateTo(item.getItemId());
+      navigateTo(item.getItemId());
       return true;
     });
   }
@@ -124,17 +125,18 @@ public class MainActivity extends AppCompatActivity {
       DateTimePickerFragment fragment = new DateTimePickerFragment();
       fragment.setCalendar(calendar);
       fragment.setMode(Mode.DATE);
-      fragment.setOnChangeListener((cal) -> loadApod(cal.getTime())); // Invoke load Apod
+      fragment.setOnChangeListener((cal) -> loadApod(cal.getTime()));
       fragment.show(getSupportFragmentManager(), fragment.getClass().getName());
     });
   }
 
   private void navigateTo(int itemId) {
-    if (navController.getCurrentDestination() .getId() != itemId) {
+    if (navController.getCurrentDestination().getId() != itemId) {
       navController.navigate(itemId, null, navOptions);
       if (navigator.getSelectedItemId() != itemId) {
         navigator.setSelectedItemId(itemId);
       }
     }
   }
+
 }

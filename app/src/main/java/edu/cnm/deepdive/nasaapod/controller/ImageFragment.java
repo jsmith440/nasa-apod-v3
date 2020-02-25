@@ -28,6 +28,7 @@ public class ImageFragment extends Fragment {
   private WebView contentView;
   private Apod apod;
   private boolean showDownload = false;
+  private MainViewModel viewModel;
 
   @Override
   public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -47,7 +48,7 @@ public class ImageFragment extends Fragment {
   @Override
   public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
     super.onViewCreated(view, savedInstanceState);
-    MainViewModel viewModel = new ViewModelProvider(getActivity()).get(MainViewModel.class);
+    viewModel = new ViewModelProvider(getActivity()).get(MainViewModel.class);
     viewModel.getApod().observe(getViewLifecycleOwner(), (apod) -> {
       this.apod = apod;
       getActivity().invalidateOptionsMenu();
@@ -87,7 +88,12 @@ public class ImageFragment extends Fragment {
         showInfo();
         break;
       case R.id.download:
-        // TODO Invoke download functionality.
+        MainActivity activity = (MainActivity) getActivity();
+        activity.setProgressVisibility(View.VISIBLE);
+        viewModel.downloadImage(apod, () -> {
+          activity.setProgressVisibility(View.GONE);
+          activity.showToast(getString(R.string.image_downloaded));
+        });
         break;
       default:
         handled = super.onOptionsItemSelected(item);
